@@ -2,7 +2,7 @@ import os
 import re
 import pytz
 import threading
-import time  # Добавлен импорт модуля time
+import time 
 from datetime import datetime, timedelta
 from telebot import TeleBot
 from telebot.types import ChatPermissions
@@ -60,7 +60,6 @@ ALLOWED_LINKS = ["https://t.me/TikTokModDownload", "https://t.me/ChatTTMD"]
 chat_ids = set()
 chat_locked = {}
 
-# --- Вспомогательные функции ---
 def now_utc():
     return datetime.utcnow()
 
@@ -125,19 +124,16 @@ def unmute_user_db(chat_id, user_id):
 def log_action(table, chat_id, user_id, reason=""):
     table.insert({"chat_id": chat_id, "user_id": user_id, "timestamp": now_utc().isoformat(), "reason": reason})
 
-# --- Улучшенная логика блокировки чата ---
 def update_chat_lock(chat_id):
     """Мгновенно обновляет состояние блокировки для конкретного чата"""
     try:
         should_lock = is_restricted_time()
         
-        # Если нужно заблокировать и чат не заблокирован
         if should_lock and not chat_locked.get(chat_id, False):
             bot.set_chat_permissions(chat_id, create_restricted_permissions())
             chat_locked[chat_id] = True
             bot.send_message(chat_id, "🔒 Чат закрыт с 17:00 до 6:00 по МСК.")
         
-        # Если нужно разблокировать и чат заблокирован
         elif not should_lock and chat_locked.get(chat_id, False):
             bot.set_chat_permissions(chat_id, create_full_permissions())
             chat_locked[chat_id] = False
@@ -166,15 +162,11 @@ def background_scheduler():
     """Фоновый планировщик для мгновенной реакции на время"""
     while True:
         try:
-            # Обновляем состояние блокировки для всех активных чатов
             for chat_id in list(chat_ids):
                 update_chat_lock(chat_id)
-            
-            # Проверяем истекшие муты
             check_expired_mutes()
             
-            # Рассчитываем время до следующей минуты
-            now = datetime.utcnow()  # Используем UTC для единообразия
+            now = datetime.utcnow()
             seconds_until_next_minute = 60 - now.second
             time.sleep(seconds_until_next_minute)
             
@@ -182,7 +174,6 @@ def background_scheduler():
             print(f"Ошибка в планировщике: {e}")
             time.sleep(60)
 
-# --- Вспомогательная функция для получения целевого пользователя ---
 def get_target_user(message):
     if message.reply_to_message:
         return message.reply_to_message.from_user.id
@@ -190,11 +181,9 @@ def get_target_user(message):
         bot.reply_to(message, "Ответь на сообщение пользователя.")
         return None
 
-# --- Команды администратора ---
 @bot.message_handler(commands=['start'])
 def start_command(message):
     bot.reply_to(message, "✅ Бот запущен и готов к работе!")
-    # При старте добавляем чат в отслеживаемые
     if message.chat.type in ['group', 'supergroup']:
         chat_ids.add(message.chat.id)
         update_chat_lock(message.chat.id)
@@ -283,7 +272,6 @@ def cmd_unwarn(message):
         left = unwarn_user(uid)
         bot.send_message(message.chat.id, f"✅ Предупреждение снято. Осталось: {left}/3.")
 
-# --- Команды для вывода списков ---
 @bot.message_handler(commands=['warnlist'])
 def cmd_warnlist(message):
     items = warns_table.all()
@@ -324,7 +312,6 @@ def cmd_kicklist(message):
         msg = "\n".join([f"ID: {k['user_id']} — {k['timestamp']}" for k in items])
         bot.reply_to(message, f"👢 Список киков:\n{msg}")
 
-# --- Общая модерация сообщений ---
 @bot.message_handler(func=lambda m: True, content_types=['text', 'photo', 'video', 'document', 'audio', 'voice', 'sticker', 'animation'])
 def handle_message(message):
     if message.chat.type not in ['group', 'supergroup']:
@@ -335,11 +322,9 @@ def handle_message(message):
     chat_ids.add(chat_id)
     is_admin = user_id in ADMIN_IDS
 
-    # Инициализация состояния чата при первом сообщении
     if chat_id not in chat_locked:
         chat_locked[chat_id] = is_restricted_time()
 
-    # Проверка на сообщения от имени канала
     if message.sender_chat and not is_admin:
         try:
             bot.delete_message(chat_id, message.message_id)
@@ -348,14 +333,12 @@ def handle_message(message):
             print(f"Ошибка при удалении сообщения от канала: {e}")
         return
 
-    # Проверка на запрещенные ссылки
     if message.text and contains_bad_link(message.text) and not is_admin:
         try:
             bot.delete_message(chat_id, message.message_id)
             warns = warn_user(user_id)
             bot.send_message(chat_id, f"🔗 Разрешены только ссылки на:\n" + "\n".join(ALLOWED_LINKS))
             
-            # Автоматический мут при 3 предупреждениях
             if warns >= 3:
                 until = now_utc() + timedelta(hours=1)
                 restrict_all(chat_id, user_id, until)
@@ -369,11 +352,9 @@ def handle_message(message):
 if __name__ == "__main__":
     print("✅ Бот запущен")
     
-    # Запускаем фоновый поток для мгновенной реакции
     scheduler_thread = threading.Thread(target=background_scheduler, daemon=True)
     scheduler_thread.start()
     
-    # Инициализация состояния для всех известных чатов
     for chat_id in list(chat_ids):
         try:
             chat_locked[chat_id] = is_restricted_time()
